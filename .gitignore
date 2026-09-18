@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.py[cod]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Ignore local environment variables and API credentials.
+.env
+
+# Ignore pytest cache.
+.pytest_cache/
