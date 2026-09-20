@@ -47,6 +47,19 @@ def _request_candidate_extraction(candidate_text: str):
     )
 
 
+def _is_valid_candidate(candidate: CandidateExtraction) -> bool:
+    # Reject responses with missing required text fields.
+    if not candidate.name.strip() or not candidate.role.strip():
+        return False
+
+    # Reject impossible experience values.
+    if candidate.experience_years < 0:
+        return False
+
+    # Accept the candidate when all basic checks pass.
+    return True
+
+
 def extract_candidate(candidate_text: str) -> CandidateExtraction:
     # Start the high-resolution timer before the LLM request.
     start_time = time.perf_counter()
@@ -75,7 +88,7 @@ def extract_candidate(candidate_text: str) -> CandidateExtraction:
                 )
 
     # Check that the LLM returned a valid structured result.
-    if response.output_parsed is None:
+    if response.output_parsed is None or not _is_valid_candidate(response.output_parsed):
         # Retry once when the first response is malformed.
         if attempts < max_attempts:
             attempts += 1
@@ -90,8 +103,8 @@ def extract_candidate(candidate_text: str) -> CandidateExtraction:
                     "LLM request failed during the retry. Please try again later."
                 )
 
-        # Fail safely if the final response is still malformed.
-        if response.output_parsed is None:
+        if response.output_parsed is None or not _is_valid_candidate(response.output_parsed):
+            # Fail safely when the final response is still invalid.
             raise RuntimeError(
                 "LLM returned an invalid structured response after two attempts."
             )
