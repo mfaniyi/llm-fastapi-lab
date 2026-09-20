@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-
+from llm_fastapi_lab.monitoring import get_cost_per_100_requests
 from llm_fastapi_lab.llm import extract_candidate
 
 # Create the FastAPI application.
@@ -25,3 +25,11 @@ def extract_candidate_endpoint(request: CandidateRequest):
 
     # Return the candidate data together with monitoring information.
     return result
+
+
+@app.get("/monitoring/cost")
+def monitoring_cost():
+    # Return the estimated running cost scaled to 100 requests.
+    return {
+        "estimated_cost_per_100_requests_usd": get_cost_per_100_requests()
+    }

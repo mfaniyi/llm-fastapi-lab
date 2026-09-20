@@ -40,3 +40,11 @@ def record_call(log: LLMCallLog) -> None:
 def get_running_cost() -> float:
     # Sum the estimated cost of all recorded LLM calls.
     return sum(log.estimated_cost_usd for log in call_logs)
+
+
+def get_cost_per_100_requests() -> float:
+    # Return the average estimated cost scaled to 100 requests.
+    if not call_logs:
+        return 0.0
+
+    return (get_running_cost() / len(call_logs)) * 100
