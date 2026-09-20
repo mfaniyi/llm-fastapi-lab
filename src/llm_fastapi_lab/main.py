@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from llm_fastapi_lab.monitoring import get_cost_per_100_requests
 from llm_fastapi_lab.llm import extract_candidate
+
 
 # Create the FastAPI application.
 app = FastAPI(title="LLM FastAPI Lab")
@@ -18,7 +19,13 @@ class CandidateRequest(BaseModel):
 
 @app.post("/extract-candidate")
 def extract_candidate_endpoint(request: CandidateRequest):
-    result = extract_candidate(request.text)
+    try:
+        # Extract structured candidate information using the LLM.
+        result = extract_candidate(request.text)
+
+    except RuntimeError as exc:
+        # Return a clear service-unavailable response for LLM failures.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     # Convert the Pydantic candidate object into JSON-compatible data.
     result["candidate"] = result["candidate"].model_dump()
