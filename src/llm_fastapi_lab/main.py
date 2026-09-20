@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from llm_fastapi_lab.monitoring import get_cost_per_100_requests
 from llm_fastapi_lab.llm import extract_candidate
@@ -6,6 +7,12 @@ from llm_fastapi_lab.llm import extract_candidate
 
 # Create the FastAPI application.
 app = FastAPI(title="LLM FastAPI Lab")
+
+
+# Serve the frontend interface from the static folder.
+@app.get("/ui")
+def frontend():
+    return FileResponse("src/llm_fastapi_lab/static/index.html")
 
 
 @app.get("/")
