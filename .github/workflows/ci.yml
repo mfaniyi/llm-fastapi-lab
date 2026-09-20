@@ -1,0 +1,32 @@
+name: CI
+
+# Run the workflow whenever code is pushed or a pull request is opened.
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    # Use the latest Ubuntu runner provided by GitHub.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Download the repository code.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Install uv.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # Install the Python version defined by the project.
+      - name: Set up Python
+        run: uv python install
+
+      # Install project dependencies from the lock file.
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # Run the automated test suite.
+      - name: Run tests
+        run: uv run pytest
