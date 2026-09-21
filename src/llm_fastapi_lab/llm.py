@@ -60,13 +60,44 @@ def _is_valid_candidate(candidate: CandidateExtraction) -> bool:
     return True
 
 
-def extract_candidate(candidate_text: str) -> CandidateExtraction:
+def _record_failed_call(
+    attempts: int,
+    latency_seconds: float,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+) -> None:
+    # Calculate the estimated cost for the failed request.
+    estimated_cost = estimate_cost(
+        input_tokens,
+        output_tokens,
+        input_price_per_million=0.25,
+        output_price_per_million=2.00,
+    )
+
+    # Record the failed LLM call and its monitoring information.
+    record_call(
+        LLMCallLog(
+            model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+            latency_seconds=latency_seconds,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            estimated_cost_usd=estimated_cost,
+            attempts=attempts,
+            success=False,
+        )
+    )
+
+
+def extract_candidate(candidate_text: str) -> dict:
     # Start the high-resolution timer before the LLM request.
     start_time = time.perf_counter()
 
     # Allow one initial attempt plus one retry.
     max_attempts = 2
     attempts = 0
+
+    # Keep the latest response so its token usage can be recorded.
+    response = None
 
     # Try the LLM request up to two times.
     while attempts < max_attempts:
@@ -82,13 +113,24 @@ def extract_candidate(candidate_text: str) -> CandidateExtraction:
         except (APITimeoutError, APIError):
             # Retry once when the LLM request times out or returns an API error.
             if attempts == max_attempts:
-                # Raise the error after the final allowed attempt.
+                # Calculate the total time spent on the failed attempts.
+                latency_seconds = time.perf_counter() - start_time
+
+                # Record the failed request because no usable response was received.
+                _record_failed_call(
+                    attempts=attempts,
+                    latency_seconds=latency_seconds,
+                )
+
+                # Raise a controlled error after the final attempt.
                 raise RuntimeError(
                     "LLM request failed after two attempts. Please try again later."
                 )
 
-    # Check that the LLM returned a valid structured result.
-    if response.output_parsed is None or not _is_valid_candidate(response.output_parsed):
+    # Check whether the LLM returned a valid structured result.
+    if response.output_parsed is None or not _is_valid_candidate(
+        response.output_parsed
+    ):
         # Retry once when the first response is malformed.
         if attempts < max_attempts:
             attempts += 1
@@ -98,18 +140,45 @@ def extract_candidate(candidate_text: str) -> CandidateExtraction:
                 response = _request_candidate_extraction(candidate_text)
 
             except (APITimeoutError, APIError):
-                # Fail safely if the retry also encounters an LLM error.
+                # Calculate the total time spent across both attempts.
+                latency_seconds = time.perf_counter() - start_time
+
+                # Record the failed request.
+                _record_failed_call(
+                    attempts=attempts,
+                    latency_seconds=latency_seconds,
+                )
+
+                # Fail safely if the retry encounters an LLM error.
                 raise RuntimeError(
                     "LLM request failed during the retry. Please try again later."
                 )
 
-        if response.output_parsed is None or not _is_valid_candidate(response.output_parsed):
+        # Check whether the retry also returned an invalid response.
+        if response.output_parsed is None or not _is_valid_candidate(
+            response.output_parsed
+        ):
+            # Calculate the total time spent across both attempts.
+            latency_seconds = time.perf_counter() - start_time
+
+            # Capture token usage when the API returned a response.
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+
+            # Record the malformed-response failure.
+            _record_failed_call(
+                attempts=attempts,
+                latency_seconds=latency_seconds,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+
             # Fail safely when the final response is still invalid.
             raise RuntimeError(
                 "LLM returned an invalid structured response after two attempts."
             )
-    
-    # Calculate how long the LLM request took.
+
+    # Calculate how long the complete LLM operation took.
     latency_seconds = time.perf_counter() - start_time
 
     # Capture the input tokens used by the request.
@@ -132,7 +201,7 @@ def extract_candidate(candidate_text: str) -> CandidateExtraction:
     print(f"Output tokens: {output_tokens}")
     print(f"Estimated cost: ${estimated_cost:.8f}")
 
-    # Create a monitoring record for the successful LLM call.
+    # Record the completed successful LLM operation.
     record_call(
         LLMCallLog(
             model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
@@ -140,7 +209,7 @@ def extract_candidate(candidate_text: str) -> CandidateExtraction:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             estimated_cost_usd=estimated_cost,
-            attempts=1,
+            attempts=attempts,
             success=True,
         )
     )
